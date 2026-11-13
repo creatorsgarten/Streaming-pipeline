@@ -63,7 +63,7 @@ YouTube signs the HLS link for the IP that asked for it. That's why yt-dlp runs 
 | `INTERNAL_TOKEN` | credentials the hub uses with MediaMTX |
 | `SECURE_COOKIES` | `0` for plain-http localhost; leave unset (secure) behind HTTPS |
 | `COMPOSE_PROFILES=https`, `DOMAIN` | run Caddy with automatic HTTPS for `DOMAIN` |
-| `RTMP_PORT`, `SRT_PORT`, `HUB_PORT`, `HUB_BIND` | host ports (defaults 1936, 8891/udp, 127.0.0.1:8790) |
+| `RTMP_PORT`, `SRT_PORT`, `HUB_PORT`, `HUB_BIND`, `HTTP_PORT`, `HTTPS_PORT` | host ports (defaults 1936, 8891/udp, 127.0.0.1:8790, 80, 443) |
 | `TRUST_PROXY` | `1` behind a reverse proxy (rate limit by `X-Forwarded-For`) |
 | `METRICS_TOKEN` | optional Bearer token for `/metrics` (otherwise a signed-in session) |
 | `PUBLIC_RTMP`, `PUBLIC_SRT` | addresses shown to people in the dashboard |
@@ -80,7 +80,7 @@ docker compose up -d --build
 ```
 
 1. Point `stream.example.com` (DNS **A** record) at the server's IP.
-2. Open the firewall: **80/tcp, 443/tcp** (dashboard, HTTPS certificate), **1935/tcp** (RTMP from OBS), **8890/udp** (SRT).
+2. Open the firewall: **80/tcp, 443/tcp** (dashboard, HTTPS certificate), **1935/tcp** (RTMP from OBS), **8890/udp** (SRT). These must be free: another media server or web server already on 80/443/1935 has to be stopped first (or set `HTTP_PORT`, `HTTPS_PORT`, `RTMP_PORT` — but Caddy needs 80/443 to get a certificate).
 3. Open `https://stream.example.com`. Caddy fetches the certificate on first visit.
 
 OBS then uses `rtmp://stream.example.com/live` plus the key from the dashboard.
@@ -98,7 +98,9 @@ bunx tsc --noEmit -p .
 docker compose up -d --build && bun scripts/e2e.ts   # end to end against the real containers
 ```
 
-`scripts/e2e.ts` publishes a test pattern and relays it through the hub to a second MediaMTX path standing in for a platform. It then checks with ffprobe that H.264 video and AAC audio arrive. It also covers auto-start, waiting and resuming, the audio-only warning, the preview, metrics, rejected keys, and that no key appears in events, state or container logs.
+CI (GitHub Actions) runs the typecheck and unit tests, builds the image and checks that its ffmpeg speaks RTMPS. The end-to-end script needs Docker and runs locally.
+
+`scripts/e2e.ts` publishes a test pattern and relays it through the hub to a second MediaMTX path standing in for a platform. It then checks with ffprobe that H.264 video and AAC audio arrive. It also covers live-update timing (catches a buffering proxy), auto-start, waiting and resuming, the audio-only warning, the preview, metrics, rejected keys, and that no key appears in events, state or container logs.
 
 Layout:
 

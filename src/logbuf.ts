@@ -57,7 +57,8 @@ export function tailFile(path: string, onLine: (line: string) => void, everyMs =
     busy = true
     try {
       const st = await stat(path)
-      if (pos < 0) pos = Math.max(0, st.size - 64 * 1024) // start near the end
+      // start at the end: older lines may name keys of destinations deleted before this restart
+      if (pos < 0) pos = st.size
       if (st.size < pos) { pos = 0; partial = '' }
       if (st.size > pos) {
         const fh = await open(path, 'r')

@@ -65,6 +65,24 @@ check('wrong password refused', (await api('POST', '/api/login', { password: 'no
 check('cross-site POST refused', (await fetch(`${HUB}/api/login`, { method: 'POST', headers: { origin: 'http://evil.example', 'content-type': 'application/json' }, body: '{}' })).status === 403)
 check('login', (await api('POST', '/api/login', { password: env.ADMIN_PASSWORD })).status === 200 && !!cookie)
 
+// live updates must arrive steadily (a compressing proxy in front would hold them back)
+{
+  const ac = new AbortController()
+  const t0 = Date.now()
+  const times: number[] = []
+  const timer = setTimeout(() => ac.abort(), 3000)
+  try {
+    const r = await fetch(`${HUB}/api/stream`, { headers: { cookie }, signal: ac.signal })
+    const rd = r.body!.getReader()
+    for (;;) {
+      const { value, done } = await rd.read()
+      if (done) break
+      if (new TextDecoder().decode(value).includes('event: state')) times.push(Date.now() - t0)
+    }
+  } catch {} finally { clearTimeout(timer) }
+  check('live updates arrive every ~0.5 s', times.length >= 3 && times[0]! < 1500, `${times.length} in 3 s`)
+}
+
 const a = (await api('POST', '/api/sources', { name: 'E2E Stage', kind: 'ingest' })).json
 const sink = (await api('POST', '/api/sources', { name: 'E2E Sink', kind: 'ingest' })).json
 const aKey = (await api('GET', `/api/sources/${a.id}/key`)).json.key

@@ -20,13 +20,13 @@ test('levels', () => {
   expect(mediamtxLevel('2026/11/13 20:00:00 INF [RTMP] x')).toBe('info')
 })
 
-test('tailFile follows appends and survives truncation', async () => {
+test('tailFile starts at the end, follows appends and survives truncation', async () => {
   const f = join(mkdtempSync(join(tmpdir(), 'tail-')), 'x.log')
-  writeFileSync(f, 'old\n')
+  writeFileSync(f, 'from-before-the-restart\n')
   const got: string[] = []
   const stop = tailFile(f, l => got.push(l), 20)
   await Bun.sleep(60)
-  appendFileSync(f, 'a\nb')
+  appendFileSync(f, 'old\na\nb')
   await Bun.sleep(60)
   appendFileSync(f, 'c\n')
   await Bun.sleep(60)

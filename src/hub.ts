@@ -476,9 +476,12 @@ export class Hub {
 
   /** a line from the media server's own log; tags it with the source when it names one */
   mediaLog(line: string) {
-    const m = line.match(/live\/([a-z0-9]{3,40})/)
+    const slugs = new Set(this.sources().map(s => s.slug))
+    // a path that isn't one of our streams is almost always somebody's key typed in the wrong place: mask it
+    const masked = line.replace(/\blive\/([^\s'"?]+)/g, (all, name: string) => (slugs.has(name) ? all : 'live/••••'))
+    const m = masked.match(/live\/([a-z0-9]{3,40})\b/)
     const src = m ? this.sources().find(x => x.slug === m[1]) : undefined
-    this.logs.push({ level: mediamtxLevel(line), origin: 'media', sourceId: src?.id ?? null, text: this.redactor.scrub(line) })
+    this.logs.push({ level: mediamtxLevel(line), origin: 'media', sourceId: src?.id ?? null, text: this.redactor.scrub(masked) })
   }
 
   // ---------- what the dashboard sees ----------

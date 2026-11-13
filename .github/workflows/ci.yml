@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.19
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit -p .
+      - run: bun test
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t streaming-pipeline .
+      - name: ffmpeg in the image can talk RTMPS (Facebook)
+        run: docker run --rm --entrypoint ffmpeg streaming-pipeline -hide_banner -protocols | grep -qx '  rtmps'
+      - name: yt-dlp is present
+        run: docker run --rm --entrypoint yt-dlp streaming-pipeline --version

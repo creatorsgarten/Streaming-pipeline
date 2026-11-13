@@ -25,6 +25,8 @@ services:
       MEDIAMTX_HLS: http://mediamtx:8888
       PUBLIC_RTMP: ${PUBLIC_RTMP:-rtmp://localhost:1936}
       PUBLIC_SRT: ${PUBLIC_SRT:-srt://localhost:8891}
+      SECURE_COOKIES: ${SECURE_COOKIES:-1}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
       MEDIAMTX_LOG: /media-logs/mediamtx.log
     volumes:
       - hub-data:/data
@@ -44,9 +46,9 @@ services:
       - caddy-data:/data
       - caddy-config:/config
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
     depends_on:
       - hub
 

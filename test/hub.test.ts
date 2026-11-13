@@ -142,6 +142,18 @@ describe('hub', () => {
     await h.done()
   })
 
+  test('media log: unknown paths are masked (a key from before a restart, never registered)', async () => {
+    const h = await setup()
+    await h.hub.createSource({ name: 'stage', kind: 'ingest' })
+    h.hub.mediaLog("2026/11/13 INF [RTMP] [conn 1.2.3.4:5] closed: path 'live/FB-0000000000-0-not-a-real-key' is not configured")
+    h.hub.mediaLog("2026/11/13 INF [RTMP] [conn 1.2.3.4:6] is publishing to path 'live/stage', 2 tracks (H264, MPEG-4 Audio)")
+    const lines = h.hub.logs.since(0).lines.filter(l => l.origin === 'media')
+    expect(lines[0]!.text).toBe("2026/11/13 INF [RTMP] [conn 1.2.3.4:5] closed: path 'live/••••' is not configured")
+    expect(lines[1]!.text).toContain("path 'live/stage'")
+    expect(lines[1]!.sourceId).not.toBeNull()
+    await h.done()
+  })
+
   test('audio-only source gets one clear warning', async () => {
     const h = await setup()
     const s = await h.hub.createSource({ name: 'radio', kind: 'ingest' })
