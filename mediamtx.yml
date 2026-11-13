@@ -1,0 +1,43 @@
+# MediaMTX: the ingest/fan-out core. Only RTMP (1935) and SRT (8890/udp) are published to the host;
+# the API (9997) and HLS (8888) stay inside the compose network and are reached through the hub.
+logLevel: info
+logDestinations: [stdout, file]
+logFile: /logs/mediamtx.log
+
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 1024
+
+authMethod: http
+authHTTPAddress: http://hub:8081/mediamtx/auth
+authHTTPExclude:
+  - action: api
+  - action: metrics
+
+api: yes
+apiAddress: :9997
+
+metrics: no
+pprof: no
+playback: no
+
+rtsp: no
+webrtc: no
+
+rtmp: yes
+rtmpAddress: :1935
+
+srt: yes
+srtAddress: :8890
+
+hls: yes
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsSegmentCount: 7
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsAlwaysRemux: no
+
+paths:
+  # every source lives at live/<slug>; the hub decides who may publish or read
+  "~^live/[a-z0-9]{3,40}$":

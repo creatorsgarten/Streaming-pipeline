@@ -1,0 +1,21 @@
+{
+  "name": "streaming-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --hot src/server.ts",
+    "start": "bun src/server.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p .",
+    "e2e": "bun scripts/e2e.ts"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.4",
+    "preact": "^11.2.0"
+  },
+  "devDependencies": {
+    "bun-types": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}

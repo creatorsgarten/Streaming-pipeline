@@ -1,0 +1,8 @@
+# HTTPS in front of the dashboard (used with COMPOSE_PROFILES=https). Caddy gets the certificate itself.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy hub:8080 {
+		# server-sent events: don't buffer
+		flush_interval -1
+	}
+}

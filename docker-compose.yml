@@ -1,0 +1,57 @@
+name: streaming-pipeline
+
+services:
+  mediamtx:
+    image: bluenviron/mediamtx:1.9.3
+    restart: unless-stopped
+    # same uid as the hub, so the hub can cap the shared log file (all ports are > 1024, no root needed)
+    user: "1000:1000"
+    volumes:
+      - ./mediamtx.yml:/mediamtx.yml:ro
+      - media-logs:/logs
+    ports:
+      - "${RTMP_PORT:-1936}:1935"
+      - "${SRT_PORT:-8891}:8890/udp"
+    depends_on:
+      - hub
+
+  hub:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MEDIAMTX_API: http://mediamtx:9997
+      MEDIAMTX_RTMP: rtmp://mediamtx:1935
+      MEDIAMTX_HLS: http://mediamtx:8888
+      PUBLIC_RTMP: ${PUBLIC_RTMP:-rtmp://localhost:1936}
+      PUBLIC_SRT: ${PUBLIC_SRT:-srt://localhost:8891}
+      MEDIAMTX_LOG: /media-logs/mediamtx.log
+    volumes:
+      - hub-data:/data
+      - media-logs:/media-logs
+    ports:
+      - "${HUB_BIND:-127.0.0.1}:${HUB_PORT:-8790}:8080"
+
+  # HTTPS for a server with a domain: COMPOSE_PROFILES=https and DOMAIN=stream.example.com in .env
+  caddy:
+    image: caddy:2.8.4-alpine
+    profiles: [https]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      - hub
+
+volumes:
+  hub-data:
+  media-logs:
+  caddy-data:
+  caddy-config:
