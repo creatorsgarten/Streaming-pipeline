@@ -36,7 +36,7 @@ services:
 
   # HTTPS for a server with a domain: COMPOSE_PROFILES=https and DOMAIN=stream.example.com in .env
   caddy:
-    image: caddy:2.8.4-alpine
+    image: caddy:2.11.9-alpine
     profiles: [https]
     restart: unless-stopped
     environment:
