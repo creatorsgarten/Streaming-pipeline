@@ -2,7 +2,7 @@ name: streaming-pipeline
 
 services:
   mediamtx:
-    image: bluenviron/mediamtx:1.9.3
+    image: bluenviron/mediamtx:1.21.3
     restart: unless-stopped
     # same uid as the hub, so the hub can cap the shared log file (all ports are > 1024, no root needed)
     user: "1000:1000"
