@@ -40,6 +40,8 @@ export interface WorkerOptions {
   now?: () => number
   /** a run must stay up this long before the backoff resets */
   stableMs?: number
+  /** and this long (plus 2 s of media) before it counts as live — a refused key can still push a buffered burst */
+  liveAfterMs?: number
 }
 
 export interface Proc {
@@ -152,7 +154,7 @@ export class Worker {
       if (gen !== this.generation) return
       this.s.progress = p
       // "live" once media has actually flowed for 2 s (a refused connection can still report a few bytes)
-      if (this.s.state === 'starting' && p.outTimeMs >= 2000) {
+      if (this.s.state === 'starting' && p.outTimeMs >= 2000 && this.now() - startedAt >= (this.o.liveAfterMs ?? 3000)) {
         this.set('live', null)
         this.s.liveSince = this.now()
         this.o.log('info', this.o.role === 'push' ? 'Live' : 'Pulling')

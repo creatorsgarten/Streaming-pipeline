@@ -42,6 +42,7 @@ async function setup() {
     internalToken: 'internal-token-123456',
     rtmpBase: 'rtmp://mediamtx:1935', ffmpeg: 'ffmpeg', ytdlp: 'yt-dlp',
     publicRtmp: 'rtmp://localhost:1936', publicSrt: 'srt://localhost:8891',
+    liveAfterMs: 0,
     workerSpawn: (_bin, args) => { const p = new FakeProc(args); procs.push(p); return p },
     resolve: async () => ({ urls: ['https://manifest.googlevideo.com/x/expire/1/index.m3u8'], expiresAt: 1000, title: 'Talk', live: true }),
   })
@@ -214,6 +215,40 @@ describe('hub', () => {
     console.log = orig
     await hub.shutdown()
   }, 10_000)
+
+  test('destinations that were on come back after a restart; stopped ones stay off', async () => {
+    const db = openDb(':memory:')
+    const vault = await Vault.create('s'.repeat(40))
+    const paths = new Map<string, PathInfo>()
+    const mk = () => {
+      const procs: FakeProc[] = []
+      const hub = new Hub({
+        db, vault, mtx: { paths: async () => [...paths.values()], kickPublisher: async () => {} } as unknown as MediaMtx,
+        internalToken: 'internal-token-123456', rtmpBase: 'rtmp://mediamtx:1935', ffmpeg: 'ffmpeg', ytdlp: 'yt-dlp', publicRtmp: '', publicSrt: '',
+        workerSpawn: (_b, args) => { const p = new FakeProc(args); procs.push(p); return p },
+      })
+      return { hub, procs }
+    }
+    const orig = console.log; console.log = () => {}
+    const a = mk()
+    await a.hub.boot()
+    const s = await a.hub.createSource({ name: 'stage', kind: 'ingest' })
+    const on = await a.hub.createDest({ sourceId: s.id, platform: 'youtube', key: 'k-on-123456', autoStart: false })
+    const off = await a.hub.createDest({ sourceId: s.id, platform: 'facebook', key: 'k-off-123456', autoStart: false })
+    await a.hub.startDest(on.id)
+    await a.hub.startDest(off.id)
+    await a.hub.stopDest(off.id)
+    await a.hub.shutdown() // the process goes away (update / crash)
+
+    paths.set('live/stage', { name: 'live/stage', ready: true, readyTime: null, tracks: ['H264', 'MPEG-4 Audio'], bytesReceived: 1, bytesSent: 0, readers: 0, sourceType: null })
+    const b = mk()
+    await b.hub.boot()
+    await tick()
+    expect(b.procs.map(p => p.args.at(-1))).toEqual(['rtmp://a.rtmp.youtube.com/live2/k-on-123456'])
+    expect(b.hub.events(20).some(e => e.message.includes('resuming 1 destination'))).toBe(true)
+    console.log = orig
+    await b.hub.shutdown()
+  })
 
   test('validation', async () => {
     const h = await setup()

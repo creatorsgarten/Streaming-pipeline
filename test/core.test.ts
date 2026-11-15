@@ -180,3 +180,38 @@ describe('youtube', () => {
       .rejects.toThrow('[youtube] x: This live event has ended.')
   })
 })
+
+import { Worker, type Proc } from '../src/worker'
+
+describe('worker', () => {
+  test('a burst of buffered media before a refusal never shows as live', async () => {
+    let t = 0
+    let out!: ReadableStreamDefaultController<Uint8Array>
+    let err!: ReadableStreamDefaultController<Uint8Array>
+    let done!: (c: number) => void
+    const proc: Proc = {
+      stdout: new ReadableStream({ start: c => { out = c } }),
+      stderr: new ReadableStream({ start: c => { err = c } }),
+      exited: new Promise(r => { done = r }),
+      kill() {},
+    }
+    const states: string[] = []
+    const w = new Worker({
+      id: 'd', role: 'push', bin: 'ffmpeg', redactor: new Redactor(), now: () => t,
+      plan: async () => ({ args: [], secrets: [] }), blocker: () => null,
+      log: () => {}, onChange: () => states.push(w.snapshot().state), spawn: () => proc,
+    })
+    w.start()
+    await new Promise(r => setTimeout(r, 5))
+    t = 500 // half a second in: 2.5 s of buffered video already written
+    out.enqueue(new TextEncoder().encode('total_size=900000\nout_time_us=2500000\nprogress=continue\n'))
+    await new Promise(r => setTimeout(r, 5))
+    expect(w.snapshot().state).toBe('starting')
+    t = 3500 // still sending 3.5 s in → live
+    out.enqueue(new TextEncoder().encode('total_size=2000000\nout_time_us=5500000\nprogress=continue\n'))
+    await new Promise(r => setTimeout(r, 5))
+    expect(w.snapshot().state).toBe('live')
+    out.close(); err.close(); done(0)
+    await w.stop()
+  })
+})

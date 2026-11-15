@@ -22,6 +22,7 @@ export interface HubDeps {
   publicRtmp: string
   publicSrt: string
   /** for tests */
+  liveAfterMs?: number
   workerSpawn?: ConstructorParameters<typeof Worker>[0]['spawn']
   resolve?: typeof resolveYoutube
 }
@@ -75,6 +76,10 @@ export class Hub {
       this.ensureDest(r)
     }
     for (const s of this.sources()) if (s.kind !== 'ingest' && s.pull_enabled) this.pullers.get(s.id)?.start()
+    // pick up where we left off: destinations that were on before the restart go back on
+    const resumed = this.destRows().filter(r => r.wanted && r.enabled)
+    for (const r of resumed) this.dests.get(r.id)?.start()
+    if (resumed.length) this.log('info', null, null, `Restarted — resuming ${resumed.length} destination${resumed.length === 1 ? '' : 's'} that were on`)
     await this.poll()
     this.pollTimer = setInterval(() => void this.poll(), 1000)
   }
@@ -171,6 +176,7 @@ export class Hub {
       bin: this.d.ffmpeg,
       redactor: this.redactor,
       spawn: this.d.workerSpawn,
+      liveAfterMs: this.d.liveAfterMs,
       blocker: () => {
         const cur = this.destRow(r.id)
         if (!cur) return 'Deleted'
@@ -200,6 +206,7 @@ export class Hub {
       bin: this.d.ffmpeg,
       redactor: this.redactor,
       spawn: this.d.workerSpawn,
+      liveAfterMs: this.d.liveAfterMs,
       blocker: () => null,
       plan: async () => {
         const cur = this.source(s.id)
@@ -411,31 +418,41 @@ export class Hub {
       .run(name, server, sealed, profile, autoStart, enabled, id)
     const w = this.dests.get(id)!
     const output = server !== r.server || sealed !== r.stream_key || profile !== r.profile
+    if (!enabled) this.setWanted([id], false)
     if (!enabled && w.wanted) await w.stop('Disabled')
     else if (output && w.wanted) await w.restart()
     this.log('info', r.source_id, id, 'Destination updated')
     this.changed()
   }
 
+  private setWanted(ids: string[], on: boolean) {
+    for (const id of ids) this.d.db.query('UPDATE destinations SET wanted = ? WHERE id = ?').run(on ? 1 : 0, id)
+  }
+
   async startDest(id: string) {
     const r = this.mustDest(id)
     if (!r.enabled) this.d.db.query('UPDATE destinations SET enabled = 1 WHERE id = ?').run(id)
+    this.setWanted([id], true)
     this.dests.get(id)!.start()
     this.log('info', r.source_id, id, 'Started')
   }
 
   async stopDest(id: string) {
     const r = this.mustDest(id)
+    this.setWanted([id], false)
     await this.dests.get(id)!.stop('Stopped')
     this.log('info', r.source_id, id, 'Stopped')
   }
 
   async startAll(sourceId: string) {
-    for (const r of this.destRows(sourceId)) if (r.enabled) this.dests.get(r.id)!.start()
+    const rows = this.destRows(sourceId).filter(r => r.enabled)
+    this.setWanted(rows.map(r => r.id), true)
+    for (const r of rows) this.dests.get(r.id)!.start()
     this.log('info', sourceId, null, 'Started every destination')
   }
 
   async stopAll(sourceId: string) {
+    this.setWanted(this.destRows(sourceId).map(r => r.id), false)
     await Promise.all(this.destRows(sourceId).map(r => this.dests.get(r.id)!.stop('Stopped')))
     this.log('info', sourceId, null, 'Stopped every destination')
   }

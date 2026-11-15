@@ -35,6 +35,8 @@ export interface DestRow {
   enabled: number
   /** go live automatically whenever the source is live */
   auto_start: number
+  /** switched on by someone (Go live / Start); resumed after a restart */
+  wanted: number
   created_at: number
 }
 
@@ -83,6 +85,8 @@ const MIGRATIONS: string[] = [
    CREATE INDEX events_ts ON events(ts);
    CREATE TABLE login_attempts (ip TEXT NOT NULL, ts INTEGER NOT NULL);
    CREATE INDEX login_attempts_ip ON login_attempts(ip, ts);`,
+  // 2: remember which destinations someone switched on, so a restart (update, crash) resumes them
+  `ALTER TABLE destinations ADD COLUMN wanted INTEGER NOT NULL DEFAULT 0;`,
 ]
 
 export function openDb(dir: string | ':memory:'): Database {

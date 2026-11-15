@@ -26,7 +26,7 @@ type Source = {
   live: Live; destinations: Dest[]
 }
 type State = { mediaServer: boolean; ingest: { rtmp: string; srt: string }; sources: Source[] }
-type Presets = { platforms: Record<string, { label: string; server: string; hint: string }>; profiles: Record<string, { label: string }> }
+type Presets = { platforms: Record<string, { label: string; server: string; hint: string; maxHeight?: number }>; profiles: Record<string, { label: string; video: { height: number } | null }> }
 type LogLine = { seq: number; ts: number; level: 'debug' | 'info' | 'warn' | 'error'; origin: string; sourceId: string | null; text: string }
 
 // ---------- api ----------
@@ -71,6 +71,16 @@ function destStatus(d: Dest, now: number): { tone: 'live' | 'busy' | 'idle' | 'b
   if (w.state === 'starting') return { tone: 'busy', text: 'Connecting…' }
   if (w.state === 'retrying') return { tone: 'busy', text: `Connection dropped — trying again in ${Math.max(0, Math.ceil(((w.nextRetryAt ?? now) - now) / 1000))} s` }
   return { tone: 'bad', text: w.reason ?? 'Stopped because of a problem' }
+}
+
+/** a heads-up when the chosen quality is more than the platform takes */
+function QualityNote({ presets, platform, profile }: { presets: Presets; platform: string; profile: string }) {
+  const max = presets.platforms[platform]?.maxHeight
+  const h = presets.profiles[profile]?.video?.height
+  if (max && h && h > max) return <small class="bad">{presets.platforms[platform]!.label} takes up to {max}p — pick {max}p or lower.</small>
+  if (h && h >= 2160) return <small>4K re-encoding needs a strong server (8+ cores). Sending HD? It gets scaled up — no extra detail, but YouTube then uses a better codec. 1440p gets most of that for far less CPU.</small>
+  if (h && h >= 1440) return <small>Scaling HD up to 1440p doesn’t add detail, but YouTube encodes 1440p+ streams with a better codec, so it looks cleaner.</small>
+  return <small>“Pass-through” sends exactly what comes in. Other choices re-encode (uses CPU).</small>
 }
 
 // ---------- small pieces ----------
@@ -178,7 +188,6 @@ function VideoIn({ source, state }: { source: Source; state: State }) {
           <h2>Video in</h2>
           <p class="muted">{source.kind === 'ingest' ? 'Send your video here from OBS (or any streaming app).' : source.kind === 'youtube' ? 'We fetch this YouTube live for you.' : 'We fetch this stream for you.'}</p>
         </div>
-        <span class="spacer" />
         {l.ready
           ? <span class="pill live"><span class="dot" />Receiving · {fmtDur(now - (l.since ?? now))}</span>
           : <span class="pill"><span class="dot" />Waiting for video</span>}
@@ -284,6 +293,7 @@ function AddDest({ source, presets, platform, onClose }: { source: Source; prese
             <select value={profile} onChange={e => setProfile(e.currentTarget.value)}>
               {Object.entries(presets.profiles).map(([id, x]) => <option value={id}>{x.label}</option>)}
             </select>
+            <QualityNote presets={presets} platform={platform} profile={profile} />
           </label>
           <label class="check"><input type="checkbox" checked={autoStart} onChange={e => setAutoStart(e.currentTarget.checked)} /> Go live by itself whenever video arrives</label>
         </details>
@@ -327,6 +337,7 @@ function EditDest({ d, presets, onClose }: { d: Dest; presets: Presets; onClose:
             <select value={profile} onChange={e => setProfile(e.currentTarget.value)}>
               {Object.entries(presets.profiles).map(([id, x]) => <option value={id}>{x.label}</option>)}
             </select>
+            <QualityNote presets={presets} platform={d.platform} profile={profile} />
           </label>
           <label class="check"><input type="checkbox" checked={autoStart} onChange={e => setAutoStart(e.currentTarget.checked)} /> Go live by itself whenever video arrives</label>
           {!!d.worker?.tail.length && <><div class="copybox-label">Last messages</div><pre class="tail">{d.worker.tail.join('\n')}</pre></>}
@@ -356,7 +367,10 @@ function DestTile({ d, presets }: { d: Dest; presets: Presets }) {
       <div class="tile-main">
         <div class="tile-name">{d.name}</div>
         <div class="tile-status">{st.tone === 'live' && <span class="dot pulse" />}{st.text}</div>
-        {st.tone === 'live' && d.worker && <div class="tile-meta">{fmtKbps(d.worker.kbps)}{d.worker.speed > 0 && d.worker.speed < 0.97 ? ' · ⚠ slow connection' : ''}</div>}
+        {st.tone === 'live' && d.worker && <div class="tile-meta">
+          {fmtKbps(d.worker.kbps)} · {presets.profiles[d.profile]?.video ? `${presets.profiles[d.profile]!.video!.height}p` : 'pass-through'}
+          {d.worker.speed > 0 && d.worker.speed < 0.97 && <span class="bad"> · ⚠ {presets.profiles[d.profile]?.video ? 'server too slow for this quality' : 'slow connection'} ({d.worker.speed.toFixed(2)}×)</span>}
+        </div>}
         {st.tone === 'bad' && <button class="linkish" onClick={() => setEdit(true)}>Fix the stream key</button>}
       </div>
       <div class="tile-actions">
@@ -420,7 +434,6 @@ function GoLive({ source }: { source: Source }) {
           <h2>{anyOn ? (live ? 'You’re live' : 'Getting ready') : 'Go live'}</h2>
           <p class="muted">{line}{problems ? ` ${problems} need${problems === 1 ? 's' : ''} attention — see above.` : ''}</p>
         </div>
-        <span class="spacer" />
         {anyOn
           ? <button class="btn huge stop-solid" disabled={busy} onClick={() => act('stop-all')}>■ Stop everything</button>
           : <button class="btn huge go" disabled={busy || !n} onClick={() => act('start-all')}>● Go live</button>}
@@ -625,7 +638,17 @@ function App() {
     es.onerror = () => call('GET', '/api/session').then(r => { if (!r.signedIn) { es.close(); setSignedIn(false) } }).catch(() => {})
     return () => es.close()
   }, [signedIn])
-  useEffect(() => { history.replaceState(null, '', view ? `#${view}` : location.pathname) }, [view])
+  // the address bar and the view follow each other (links, Back/Forward, bookmarks)
+  useEffect(() => {
+    const want = view ? `#${view}` : ''
+    if (location.hash !== want) history.pushState(null, '', want || location.pathname)
+  }, [view])
+  useEffect(() => {
+    const on = () => setView(location.hash.slice(1))
+    addEventListener('hashchange', on)
+    addEventListener('popstate', on)
+    return () => { removeEventListener('hashchange', on); removeEventListener('popstate', on) }
+  }, [])
   useEffect(() => {
     if (state && view !== 'logs' && (!view || !state.sources.some(s => s.id === view))) setView(state.sources[0]?.id ?? '')
   }, [state, view])

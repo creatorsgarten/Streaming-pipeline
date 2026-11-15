@@ -12,7 +12,8 @@ Send one live stream to many places at once (YouTube, Facebook, Twitch, any RTMP
 ```
 
 - **Sources**: push from OBS/ffmpeg (RTMP or SRT, per-source secret key), pull a **YouTube Live link** (the hub finds the HLS stream with yt-dlp, fetches a fresh link when YouTube's ~6 h link expires (a few seconds' gap), and stops by itself when the live ends instead of replaying the recording), or pull any HLS/HTTP-FLV/RTMP/SRT/RTSP URL.
-- **Destinations**: one supervised ffmpeg per destination, so one platform failing never takes the others down. Pass-through (`-c copy`) by default, or re-encode to 1080p/720p/480p with 2 s keyframes.
+- **Destinations**: one supervised ffmpeg per destination, so one platform failing never takes the others down. Pass-through (`-c copy`, keeps 4K if you send 4K) by default, or re-encode to 4K (2160p60/30), 1440p, 1080p, 720p or 480p with 2 s keyframes. HD can be scaled up: that adds no detail, but YouTube encodes 1440p+ streams with VP9, so it looks cleaner. The dashboard warns when a quality is above what the platform takes (Facebook and Twitch: 1080p) or when the server can't encode it in real time.
+- **Survives restarts**: destinations that were on go live again by themselves after an update or crash.
 - **Self-healing**: exponential backoff with jitter. A rejected stream key is treated as fatal, so the hub doesn't hammer the platform with retries. Destinations wait while the source is offline and start again on their own when it returns. You can set any destination to go live automatically when its source does.
 - **Catches the classic mistake**: an audio-only input (`video:0kB`) is flagged straight away, because YouTube and Facebook silently drop streams without video.
 - **Secrets**: stream keys are encrypted at rest (AES-256-GCM, bound to their row), never sent to the browser, and scrubbed from every log line. ffmpeg likes to print full output URLs in its errors; those are scrubbed too.
@@ -101,6 +102,8 @@ docker compose up -d --build && bun scripts/e2e.ts   # end to end against the re
 CI (GitHub Actions) runs the typecheck and unit tests, builds the image and checks that its ffmpeg speaks RTMPS. The end-to-end script needs Docker and runs locally.
 
 `scripts/e2e.ts` publishes a test pattern and relays it through the hub to a second MediaMTX path standing in for a platform. It then checks with ffprobe that H.264 video and AAC audio arrive. It also covers live-update timing (catches a buffering proxy), auto-start, waiting and resuming, the audio-only warning, the preview, metrics, rejected keys, and that no key appears in events, state or container logs.
+
+`scripts/e2e-quality.ts` sends HD (1080p30) in and runs every re-encode profile once. It checks the resolution, frame rate and 2 s keyframes at the destination, and prints whether this machine encodes each profile in real time (`HARD=1` adds moving noise for a worst case). On an Apple M4 Max even 4K60 kept up (about 3 cores). A small 2 vCPU VPS won't manage 4K re-encoding, so use pass-through or 1440p there.
 
 Layout:
 

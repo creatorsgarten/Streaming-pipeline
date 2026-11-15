@@ -96,7 +96,7 @@ export function pushArgs(input: string, output: string, profile: ProfileId): str
     ? [
         '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency', '-profile:v', 'high',
         '-b:v', `${p.video.kbps}k`, '-maxrate', `${p.video.kbps}k`, '-bufsize', `${p.video.kbps * 2}k`,
-        '-vf', `scale=w=${p.video.width}:h=${p.video.height}:force_original_aspect_ratio=decrease,pad=${p.video.width}:${p.video.height}:(ow-iw)/2:(oh-ih)/2,fps=${p.video.fps}`,
+        '-vf', `scale=w=${p.video.width}:h=${p.video.height}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${p.video.width}:${p.video.height}:(ow-iw)/2:(oh-ih)/2,fps=${p.video.fps}`,
         // keyframe every 2 s: what YouTube and Facebook ask for
         '-g', String(p.video.fps * 2), '-keyint_min', String(p.video.fps * 2), '-sc_threshold', '0',
         '-pix_fmt', 'yuv420p',

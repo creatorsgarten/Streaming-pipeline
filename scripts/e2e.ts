@@ -179,6 +179,21 @@ check('ffmpeg in the image supports rtmps', /\n\s+rtmps\n/.test(protos))
 const ytv = Bun.spawnSync(['docker', 'compose', 'exec', '-T', 'hub', 'yt-dlp', '--version'], { cwd: new URL('..', import.meta.url).pathname }).stdout.toString().trim()
 check('yt-dlp present in the image', /^\d{4}\.\d{2}\.\d{2}/.test(ytv), ytv)
 
+// a hub restart (update / crash) in the middle of a live: what was on comes back on by itself
+{
+  const p5 = push(`${RTMP}/live/${a.slug}?key=${aKey}`, { seconds: 60 })
+  await waitFor('source live for restart test', async () => (await src(a.id))?.live.ready)
+  const fake = (await src(a.id)).destinations.find((x: any) => x.name === 'Fake YouTube')
+  await api('POST', `/api/destinations/${fake.id}/start`)
+  await waitFor('live before restart', async () => (await src(a.id))?.destinations.find((x: any) => x.id === fake.id)?.worker?.state === 'live', 30_000)
+  Bun.spawnSync(['docker', 'compose', 'restart', 'hub'], { cwd: new URL('..', import.meta.url).pathname })
+  await waitFor('hub back', async () => (await fetch(`${HUB}/healthz`).catch(() => null))?.ok, 60_000)
+  // the session cookie survives (signed, not stored)
+  const back = await waitFor('destination resumed', async () => (await src(a.id))?.destinations.find((x: any) => x.id === fake.id)?.worker?.state === 'live', 45_000)
+  check('after a restart, a destination that was on goes live again by itself', !!back)
+  p5.kill()
+}
+
 for (const s of [a, sink, radio]) await api('DELETE', `/api/sources/${s.id}`)
 check('cleanup', !(await state()).sources.some((s: any) => [a.id, sink.id, radio.id].includes(s.id)))
 
