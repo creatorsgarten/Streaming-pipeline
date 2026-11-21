@@ -1,4 +1,4 @@
-FROM oven/bun:1.2.19-slim
+FROM oven/bun:1.4.5-slim
 
 # ffmpeg (with TLS for rtmps://), CA certificates, and a current yt-dlp (YouTube changes often, so it is
 # not pinned; rebuild the image to update it). yt-dlp uses bun as its JavaScript runtime.
